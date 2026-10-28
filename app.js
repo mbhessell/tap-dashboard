@@ -171,10 +171,17 @@
     // Not visited (no tap survey or cleaning) in the last 14 days.
     const lastAny = {}; const bump = (k, d) => { if (d && (!lastAny[k] || d > lastAny[k])) lastAny[k] = d; };
     VISITS.forEach(v => bump(v.AccountNumber, String(v.VisitDate || "").slice(0, 10))); CLEAN.forEach(c => bump(c.AccountNumber, String(c.VisitDate || "").slice(0, 10)));
-    const hideMonthly = $("#nvmonthly").checked;
-    const nv = Object.values(STOPS).filter(okStop).filter(s => !(hideMonthly && EVERY(s.Phase) === 28)).map(s => ({ s, l: lastAny[s.Title] || null, ago: lastAny[s.Title] ? daysBetween(lastAny[s.Title], t) : null }))
+    const hideMonthly = $("#nvmonthly").checked, hideUpcoming = $("#nvweek").checked;
+    // Stops still coming up this week: their rotation runs this week and their day is today or later.
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const todayIdx = (today.getDay() + 6) % 7;
+    const phaseNow = (Math.floor((Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(2024, 11, 9)) / (7 * 864e5)) % 4 + 4) % 4 + 1;
+    const upcoming = s => { const ph = String(s.Phase || ""); const runs = /all/i.test(ph) || ph.includes(String(phaseNow)); const di = DAYS.indexOf(String(s.DayOfWeek || "").trim()); return runs && di >= todayIdx; };
+    const nv = Object.values(STOPS).filter(okStop).filter(s => !(hideMonthly && EVERY(s.Phase) === 28)).filter(s => !(hideUpcoming && upcoming(s))).map(s => ({ s, l: lastAny[s.Title] || null, ago: lastAny[s.Title] ? daysBetween(lastAny[s.Title], t) : null }))
       .filter(x => x.ago == null || x.ago > 14).sort((a, b) => (b.ago == null ? 1e9 : b.ago) - (a.ago == null ? 1e9 : a.ago));
     const sched = Object.values(STOPS).filter(okStop).filter(s => !(hideMonthly && EVERY(s.Phase) === 28)).length;
+    const upCount = Object.values(STOPS).filter(okStop).filter(upcoming).length;
+    $("#nvweeknote").textContent = `(week ${phaseNow} of the rotation · ${fmt(upCount)} stops still to come)`;
     $("#nvcount").textContent = fmt(nv.length) + " of " + fmt(sched);
     $("#notvisited").innerHTML = nv.slice(0, 500).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}${x.s.LineCleaner ? " · " + esc(x.s.LineCleaner) : ""}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${EVERY(x.s.Phase)} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Every scheduled account has been visited in the last 14 days.</td></tr>`;
     $("#odnote").textContent = firstClean ? `Cleaning records start ${firstClean}, so "No record" can also mean the account simply hasn't been cleaned since then.` : "";
@@ -196,6 +203,7 @@
     document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; st.sortD = st.sortK === k ? -st.sortD : (k === "s" ? 1 : -1); st.sortK = k; render(); });
     $("#refresh").onclick = async () => { await start(true); };
     $("#nvmonthly").onchange = () => render();
+    $("#nvweek").onchange = () => render();
     $("#signout").onclick = () => msalApp.logoutRedirect({ account });
   }
   function status(msg, isErr) { $("#status").hidden = !msg; $("#status").className = "status" + (isErr ? " err" : ""); $("#status").innerHTML = msg || ""; }

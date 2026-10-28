@@ -69,6 +69,7 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <div id="detail"></div></div>
 <div class="card alert" style="margin-top:20px"><h2>Not visited in the last 14 days <span class="muted" style="font-weight:400">· <span id="nvcount"></span> scheduled accounts · no tap survey or cleaning on record in 14 days</span></h2>
 <label class="muted" style="font-size:13px;display:inline-flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="nvmonthly" checked> Hide once-a-month stops</label>
+<label class="muted" style="font-size:13px;display:inline-flex;gap:6px;align-items:center;margin:0 0 8px 16px"><input type="checkbox" id="nvweek" checked> Hide stops still scheduled later this week <span id="nvweeknote"></span></label>
 <div class="tablewrap"><table><thead><tr><th>Account</th><th>Location</th><th>Route · cleaner</th><th>Day</th><th>Schedule</th><th class="num">Last visit</th><th class="num">Days since</th></tr></thead><tbody id="notvisited"></tbody></table></div></div>
 <h1 style="margin:28px 0 12px">Line Cleaning</h1>
 <div class="kpis" id="ckpis"></div>

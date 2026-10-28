@@ -45,7 +45,7 @@
     const L = id => "/sites/" + site.id + "/lists/" + id + "/items?$top=999&$expand=fields($select=";
     const [v, s, b, cl] = await Promise.all([
       graph(L(CFG.lists.visits) + "Title,AccountNumber,AccountName,VisitDate,Location,Market,LineCleanerName,TapList,DataSource)"),
-      graph(L(CFG.lists.stops) + "Title,CustomerName,RouteNum,LineCleaner,Location,Phase,DayOfWeek)"),
+      graph(L(CFG.lists.stops) + "Title,CustomerName,RouteNum,LineCleaner,Location,Phase,DayOfWeek,Sequence)"),
       graph(L(CFG.lists.brands) + "Title,Supplier)"),
       graph(L(CFG.lists.cleaning) + "Title,AccountNumber,AccountName,VisitDate,Market,Location,LineCleanerName,CleanQ1,CleanQ2,SignatureStatus,DataSource)")
     ]);
@@ -123,7 +123,7 @@
       + `<button class="kpi ex ${st.excl ? "on" : ""}" id="exbtn" aria-pressed="${st.excl}"><b>${fmt(exAll)} <small>${pct(exAll, preEx.length)}</small></b><span>${OUR()} exclusive accounts · ${st.excl ? "showing only these" : "click to show"}</span></button>`;
     $("#exbtn").onclick = () => { st.excl = !st.excl; render(); };
     const L = {}; fr.forEach(r => { const x = L[r[3]] || (L[r[3]] = [r[3] + (r[3] === "Gulfport" ? " (FEB)" : r[3] === "Jackson" ? " (CCB)" : ""), 0, 0]); x[1] += r[5]; x[2] += r[6]; });
-    const li = Object.values(L).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#byloc"), li, Math.max(1, ...li.map(x => x[1] + x[2])));
+
     const base = st.excl ? fr : rs, cb = {}, ob = {};
     base.forEach(r => { if (r[6]) cb[r[4]] = (cb[r[4]] || 0) + r[6]; if (r[5]) ob[r[4]] = (ob[r[4]] || 0) + r[5]; });
     const pick = k => { st.brand = st.brand === k ? null : k; render(); };
@@ -141,6 +141,7 @@
     });
     const srcCount = new Set(VISITS.map(v => v.DataSource === "Encompass import" ? "import" : "app"));
     renderCleaning();
+    renderSchedule();
     $("#subtitle").textContent = (st.from ? st.from + " to " + st.to : "All dates through " + st.to) + " · latest visit per account" + (srcCount.has("import") && st.src !== "app" ? " · includes Encompass import" : "");
   }
   /* ---------- line cleaning ---------- */
@@ -160,14 +161,9 @@
     $("#ckpis").innerHTML = [[fmt(n), "Cleanings"], [fmt(accts), "Accounts cleaned"], [pct(acid, answered("CleanQ1")), "Acid cleanings"], [pct(pump, answered("CleanQ2")), "Pump used"], [appRows.length ? pct(signed, appRows.length) : "–", "Manager signed (app visits)"]].map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join("");
     const by = {}; inRange.forEach(c => { const k = c.LineCleanerName || "Unknown"; const x = by[k] || (by[k] = [k, 0, 0]); /acid/i.test(c.CleanQ1 || "") ? x[2]++ : x[1]++; });
     const bi = Object.values(by).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#bycleaner"), bi, Math.max(1, ...bi.map(x => x[1] + x[2])));
-    // Overdue: scheduled stops whose last cleaning (any date) is older than their rotation allows.
     const last = {}; all.forEach(c => { const d = String(c.VisitDate || "").slice(0, 10); if (d && (!last[c.AccountNumber] || d > last[c.AccountNumber])) last[c.AccountNumber] = d; });
-    const t = iso(today), grace = 3;
-    const od = Object.values(STOPS).filter(okStop).map(s => { const l = last[s.Title]; const due = EVERY(s.Phase); const ago = l ? daysBetween(l, t) : null; return { s, l, due, ago, late: ago == null ? Infinity : ago - due }; })
-      .filter(x => x.ago == null || x.ago > x.due + grace).sort((a, b) => b.late - a.late);
+    const t = iso(today);
     const firstClean = CLEAN.reduce((m, c) => { const d = String(c.VisitDate || "").slice(0, 10); return d && (!m || d < m) ? d : m; }, "");
-    $("#odcount").textContent = fmt(od.length);
-    $("#overdue").innerHTML = od.slice(0, 300).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${x.due} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Nothing overdue.</td></tr>`;
     // Not visited (no tap survey or cleaning) in the last 14 days.
     const lastAny = {}; const bump = (k, d) => { if (d && (!lastAny[k] || d > lastAny[k])) lastAny[k] = d; };
     VISITS.forEach(v => bump(v.AccountNumber, String(v.VisitDate || "").slice(0, 10))); CLEAN.forEach(c => bump(c.AccountNumber, String(c.VisitDate || "").slice(0, 10)));
@@ -184,17 +180,48 @@
     $("#nvweeknote").textContent = `(week ${phaseNow} of the rotation · ${fmt(upCount)} stops still to come)`;
     $("#nvcount").textContent = fmt(nv.length) + " of " + fmt(sched);
     $("#notvisited").innerHTML = nv.slice(0, 500).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}${x.s.LineCleaner ? " · " + esc(x.s.LineCleaner) : ""}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${EVERY(x.s.Phase)} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Every scheduled account has been visited in the last 14 days.</td></tr>`;
-    $("#odnote").textContent = firstClean ? `Cleaning records start ${firstClean}, so "No record" can also mean the account simply hasn't been cleaned since then.` : "";
+    $("#nvnote").textContent = firstClean ? `Cleaning records start ${firstClean}, so "No record" can also mean the account simply hasn't been cleaned since then.` : "";
+  }
+
+  /* ---------- this week's stops for one route ---------- */
+  let schedRoute = "";
+  function renderSchedule() {
+    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const todayIdx = (today.getDay() + 6) % 7;
+    const phaseNow = (Math.floor((Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - Date.UTC(2024, 11, 9)) / (7 * 864e5)) % 4 + 4) % 4 + 1;
+    const runs = s => { const ph = String(s.Phase || ""); return /all/i.test(ph) || ph.includes(String(phaseNow)); };
+    const route = schedRoute || st.route || $("#schedRoute").value;
+    if ($("#schedRoute").value !== route) $("#schedRoute").value = route;
+    const lastV = {}, lastC = {}; const up = (m, k, d, extra) => { if (d && (!m[k] || d > m[k].d)) m[k] = Object.assign({ d }, extra || {}); };
+    VISITS.forEach(v => up(lastV, v.AccountNumber, String(v.VisitDate || "").slice(0, 10)));
+    CLEAN.forEach(c => up(lastC, c.AccountNumber, String(c.VisitDate || "").slice(0, 10), { type: c.CleanQ1 || "" }));
+    const t = iso(today); let html = "", total = 0;
+    for (let i = todayIdx; i < 7; i++) {
+      const day = new Date(today); day.setDate(today.getDate() + (i - todayIdx));
+      const list = Object.values(STOPS).filter(s => String(s.RouteNum || "") === route && String(s.DayOfWeek || "").trim() === DAYS[i] && runs(s))
+        .sort((x, y) => (Number(x.Sequence) || 999) - (Number(y.Sequence) || 999) || String(x.CustomerName).localeCompare(String(y.CustomerName)));
+      if (!list.length) continue; total += list.length;
+      const done = list.filter(s => (lastV[s.Title] && lastV[s.Title].d === t) || (lastC[s.Title] && lastC[s.Title].d === t)).length;
+      html += `<details ${i === todayIdx || !html ? "open" : ""}><summary class="dayhead">${DAYS[i]}, ${day.getMonth() + 1}/${day.getDate()}${i === todayIdx ? ' <span class="pill o">Today</span>' : ""} <span class="muted">· ${list.length} stops${i === todayIdx ? " · " + done + " done" : ""}</span></summary>
+        <div class="tablewrap" style="max-height:none"><table><thead><tr><th class="num">#</th><th>Account</th><th>Location</th><th>Schedule</th><th class="num">Last tap survey</th><th class="num">Last cleaning</th><th></th></tr></thead><tbody>` +
+        list.map((s, n) => { const v = lastV[s.Title], c = lastC[s.Title]; const isDone = i === todayIdx && ((v && v.d === t) || (c && c.d === t));
+          return `<tr><td class="num">${esc(s.Sequence || n + 1)}</td><td>${esc(titleCase(s.CustomerName))} <span class="muted">#${esc(s.Title)}</span></td><td>${esc(s.Location || "")}</td><td>every ${EVERY(s.Phase)} days</td><td class="num">${v ? esc(v.d) : '<span class="muted">none</span>'}</td><td class="num">${c ? esc(c.d) + (c.type ? " · " + esc(c.type) : "") : '<span class="muted">none</span>'}</td><td>${isDone ? '<span class="pill o">Done</span>' : ""}</td></tr>`; }).join("") + `</tbody></table></div></details>`;
+    }
+    const cl = (Object.values(STOPS).find(s => String(s.RouteNum || "") === route) || {}).LineCleaner || "";
+    $("#schedsum").textContent = route ? `Route ${route}${cl ? " · " + cl : ""} · week ${phaseNow} of the rotation · ${total} stops left this week` : "";
+    $("#sched").innerHTML = html || `<p class="muted">No more stops scheduled on this route this week.</p>`;
   }
 
   function fillRoutes() {
     const rs = [...new Set(Object.values(STOPS).map(s => String(s.RouteNum || "")).filter(Boolean))].sort();
     const names = {}; Object.values(STOPS).forEach(s => { if (s.RouteNum && s.LineCleaner) names[s.RouteNum] = s.LineCleaner; });
+    const opts = rs.map(r => `<option value="${esc(r)}">${esc(r)}${names[r] ? " · " + esc(names[r]) : ""}</option>`).join("");
+    $("#schedRoute").innerHTML = opts; if (!schedRoute && rs.length) schedRoute = rs[0];
     $("#route").innerHTML = `<option value="">All routes</option>` + rs.map(r => `<option value="${esc(r)}">${esc(r)}${names[r] ? " · " + esc(names[r]) : ""}</option>`).join("");
   }
   function wire() {
     document.querySelectorAll("#loc button").forEach(b => b.onclick = () => { st.loc = b.dataset.v; document.querySelectorAll("#loc button").forEach(x => x.setAttribute("aria-pressed", x === b)); render(); });
-    $("#route").onchange = e => { st.route = e.target.value; render(); };
+    $("#route").onchange = e => { st.route = e.target.value; if (st.route) schedRoute = st.route; render(); };
     $("#range").onchange = e => { setRange(e.target.value); $("#custom").hidden = e.target.value !== "custom"; $("#from").value = st.from; $("#to").value = st.to; render(); };
     $("#from").onchange = e => { st.from = e.target.value; render(); };
     $("#to").onchange = e => { st.to = e.target.value || iso(today); render(); };
@@ -204,6 +231,7 @@
     $("#refresh").onclick = async () => { await start(true); };
     $("#nvmonthly").onchange = () => render();
     $("#nvweek").onchange = () => render();
+    $("#schedRoute").onchange = e => { schedRoute = e.target.value; renderSchedule(); };
     $("#signout").onclick = () => msalApp.logoutRedirect({ account });
   }
   function status(msg, isErr) { $("#status").hidden = !msg; $("#status").className = "status" + (isErr ? " err" : ""); $("#status").innerHTML = msg || ""; }

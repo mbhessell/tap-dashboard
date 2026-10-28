@@ -27,6 +27,7 @@ input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);bo
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 th{cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 tbody tr{cursor:pointer}tbody tr:hover{background:var(--soft)}
+.dayhead{font-size:15px;font-weight:700;margin:16px 0 6px;cursor:pointer}
 .card.alert{border:2px solid var(--comp)}.card.alert h2{color:var(--comp)}
 #sup{max-height:300px;overflow:auto;padding-right:4px}
 .tablewrap{max-height:420px;overflow:auto}
@@ -59,7 +60,6 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <input type="search" id="q" placeholder="Find an account or brand"></div></div>
 <div class="kpis" id="kpis"></div>
 <div class="grid">
-<div class="card"><h2><span class="our"></span> vs competitor taps</h2><div class="legend"><span><i style="background:var(--ours)"></i><span class="our"></span></span><span><i style="background:var(--comp)"></i>Competitor</span></div><div id="byloc"></div></div>
 <div class="card"><h2>Top competitor brands <span class="muted" style="font-weight:400">· click to filter</span></h2><div id="comp"></div></div>
 <div class="card"><h2>Top <span class="our"></span> brands <span class="muted" style="font-weight:400">· click to filter</span></h2><div id="ours"></div></div>
 <div class="card"><h2>Taps by supplier <span class="muted" style="font-weight:400">· click to filter</span></h2><div class="legend"><span><i style="background:var(--ours)"></i><span class="our"></span></span><span><i style="background:var(--comp)"></i>Competitor</span></div><div id="sup"></div></div>
@@ -70,16 +70,17 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <div class="card alert" style="margin-top:20px"><h2>Not visited in the last 14 days <span class="muted" style="font-weight:400">· <span id="nvcount"></span> scheduled accounts · no tap survey or cleaning on record in 14 days</span></h2>
 <label class="muted" style="font-size:13px;display:inline-flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="nvmonthly" checked> Hide once-a-month stops</label>
 <label class="muted" style="font-size:13px;display:inline-flex;gap:6px;align-items:center;margin:0 0 8px 16px"><input type="checkbox" id="nvweek" checked> Hide stops still scheduled later this week <span id="nvweeknote"></span></label>
-<div class="tablewrap"><table><thead><tr><th>Account</th><th>Location</th><th>Route · cleaner</th><th>Day</th><th>Schedule</th><th class="num">Last visit</th><th class="num">Days since</th></tr></thead><tbody id="notvisited"></tbody></table></div></div>
+<div class="tablewrap"><table><thead><tr><th>Account</th><th>Location</th><th>Route · cleaner</th><th>Day</th><th>Schedule</th><th class="num">Last visit</th><th class="num">Days since</th></tr></thead><tbody id="notvisited"></tbody></table></div><p class="note" id="nvnote"></p></div>
+<div class="card" style="margin-top:14px"><h2>This week's stops <span class="muted" style="font-weight:400">· today through the end of the week</span></h2>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><select id="schedRoute" aria-label="Route for this week's stops"></select><span class="muted" id="schedsum"></span></div>
+<div id="sched"></div></div>
 <h1 style="margin:28px 0 12px">Line Cleaning</h1>
 <div class="kpis" id="ckpis"></div>
 <div class="grid">
 <div class="card"><h2>Cleanings by line cleaner</h2><div class="legend"><span><i style="background:var(--ours)"></i>Regular</span><span><i style="background:var(--comp)"></i>Acid</span></div><div id="bycleaner"></div></div>
 </div>
-<div class="card" style="margin-top:14px"><h2>Overdue for cleaning <span class="muted" style="font-weight:400">· <span id="odcount"></span> scheduled accounts past their rotation (3-day grace)</span></h2>
-<div class="tablewrap"><table><thead><tr><th>Account</th><th>Location</th><th>Route</th><th>Day</th><th>Schedule</th><th class="num">Last cleaned</th><th class="num">Days since</th></tr></thead><tbody id="overdue"></tbody></table></div><p class="note" id="odnote"></p></div>
 <p class="note">Each account counts once: its most recent survey in the date range. Exclusive = every tap at the account is ours. Our brands show as FEB in Gulfport and CCB in Jackson; Stella Artois counts as a competitor in Jackson. Brands typed in as "not listed" are left out until the office resolves them.</p>
 </div></div>
 <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=4"></script>
 </body></html>

@@ -1,0 +1,73 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Tap Dashboard</title>
+<style>
+:root{--bg:#eef1f2;--card:#fff;--ink:#18232a;--muted:#5b6a73;--line:#d3dade;--ours:#2f5866;--comp:#c0623b;--soft:#dde8ec}
+@media (prefers-color-scheme:dark){:root{--bg:#11181c;--card:#1a2328;--ink:#e7ecee;--muted:#9aaab2;--line:#2e3a40;--ours:#7fb6c6;--comp:#e58a63;--soft:#1f3a43}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:24px;margin:0}h2{font-size:15px;margin:0 0 10px}.muted{color:var(--muted)}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:end;justify-content:space-between;margin-bottom:16px}
+.filters{display:flex;gap:8px;flex-wrap:wrap}
+.seg button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;cursor:pointer}
+.seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}
+.seg button[aria-pressed=true]{background:var(--ours);color:var(--card);border-color:var(--ours)}
+input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-width:200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi.ex{text-align:left;font:inherit;color:inherit;cursor:pointer;border-color:var(--ours);border-width:2px}.kpi.ex.on{background:var(--soft)}.kpi b small{font-size:14px;color:var(--muted);font-weight:600}
+.kpi b{display:block;font-size:26px;line-height:1.1}.kpi span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.bar{display:grid;grid-template-columns:150px 1fr 44px;gap:8px;align-items:center;margin:5px 0;cursor:pointer}
+.bar .lab{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.bar .track{height:14px;background:var(--soft);border-radius:4px;overflow:hidden;display:flex}
+.bar .o{background:var(--ours)}.bar .c{background:var(--comp)}.bar .n{text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.bar.sel .lab{font-weight:700}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-bottom:8px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--soft)}
+#sup{max-height:300px;overflow:auto;padding-right:4px}
+.tablewrap{max-height:420px;overflow:auto}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;margin:2px;border:1px solid var(--line)}
+.pill.o{border-color:var(--ours);color:var(--ours)}.pill.c{border-color:var(--comp);color:var(--comp)}
+.note{font-size:12px;color:var(--muted);margin-top:16px}
+.chip{font-size:12px;background:var(--soft);border-radius:999px;padding:3px 10px;margin-left:6px}
+.chip button{border:0;background:none;color:inherit;cursor:pointer;font:inherit;padding:0 0 0 4px}
+
+select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.bar2{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;font-size:13px}
+.linkbtn{background:none;border:0;color:var(--ours);font:inherit;font-weight:600;cursor:pointer;padding:4px}
+.status{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:16px 0}
+.status.err{border-color:var(--comp);color:var(--comp)}
+.signin{max-width:420px;margin:12vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;text-align:center}
+.signin button{font:inherit;font-weight:600;font-size:16px;border:0;border-radius:10px;padding:12px 18px;background:var(--ours);color:var(--card);cursor:pointer;width:100%;margin-top:16px}
+#sup{max-height:300px;overflow:auto;padding-right:4px}
+</style></head><body><div class="wrap">
+<div class="signin" id="signin" hidden><h1>Tap Dashboard</h1><p class="muted">F.E.B. Distributing / Capital City Beverages. Sign in with your Microsoft 365 account.</p><button id="signbtn">Sign in with Microsoft</button></div>
+<div id="status" class="status" hidden></div>
+<div id="main" hidden>
+<div class="bar2"><span class="muted">Signed in as <b id="who"></b></span><span><button class="linkbtn" id="refresh">Refresh data</button><button class="linkbtn" id="signout">Sign out</button></span></div>
+<div class="top"><div><h1>Draft Tap Survey</h1><div class="muted"><span id="subtitle"></span> <span id="active"></span></div></div>
+<div class="filters">
+<div class="seg" id="loc"><button data-v="All" aria-pressed="true">All</button><button data-v="Jackson">Jackson</button><button data-v="Gulfport">Gulfport</button></div>
+<select id="route" aria-label="Route"></select>
+<select id="range" aria-label="Date range"><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="all">All dates</option><option value="custom">Custom…</option></select>
+<span id="custom" hidden><input type="date" id="from" aria-label="From"> <input type="date" id="to" aria-label="To"></span>
+<select id="src" aria-label="Data source"><option value="all">All data</option><option value="app">App visits only</option><option value="import">Encompass import only</option></select>
+<input type="search" id="q" placeholder="Find an account or brand"></div></div>
+<div class="kpis" id="kpis"></div>
+<div class="grid">
+<div class="card"><h2><span class="our"></span> vs competitor taps</h2><div class="legend"><span><i style="background:var(--ours)"></i><span class="our"></span></span><span><i style="background:var(--comp)"></i>Competitor</span></div><div id="byloc"></div></div>
+<div class="card"><h2>Top competitor brands <span class="muted" style="font-weight:400">· click to filter</span></h2><div id="comp"></div></div>
+<div class="card"><h2>Top <span class="our"></span> brands <span class="muted" style="font-weight:400">· click to filter</span></h2><div id="ours"></div></div>
+<div class="card"><h2>Taps by supplier <span class="muted" style="font-weight:400">· click to filter</span></h2><div class="legend"><span><i style="background:var(--ours)"></i><span class="our"></span></span><span><i style="background:var(--comp)"></i>Competitor</span></div><div id="sup"></div></div>
+</div>
+<div class="card" style="margin-top:14px"><h2>Accounts <span class="muted" style="font-weight:400">· lowest share first · click a column to sort, a row to see its taps</span></h2>
+<div class="tablewrap"><table><thead><tr><th data-k="n">Account</th><th data-k="l">Location</th><th data-k="route">Route</th><th class="num" data-k="t">Taps</th><th class="num" data-k="o"><span class="our"></span></th><th class="num" data-k="c">Competitor</th><th class="num" data-k="s">Share</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div id="detail"></div></div>
+<p class="note">Each account counts once: its most recent survey in the date range. Exclusive = every tap at the account is ours. Our brands show as FEB in Gulfport and CCB in Jackson; Stella Artois counts as a competitor in Jackson. Brands typed in as "not listed" are left out until the office resolves them.</p>
+</div></div>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="app.js"></script>
+</body></html>

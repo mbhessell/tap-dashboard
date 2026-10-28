@@ -1,0 +1,186 @@
+/* Tap Dashboard: live view of the Draft Survey SharePoint lists, after Microsoft 365 sign-in. */
+(function () {
+  "use strict";
+  const CFG = {
+    clientId: "77d8f819-d373-40ee-a424-da8a8b15552d",
+    tenantId: "0c07cc35-4442-46a2-a2b1-a250d653b92f",
+    site: "febdistributing365.sharepoint.com:/sites/DraftSurvey",
+    lists: { visits: "cd3d31a7-ae92-4d2f-bb94-ca0693882ebc", stops: "4696936e-1e85-49ae-b5c7-50fc01f1237d", brands: "fd9848ac-b296-440b-ae80-0e28f10ab755" },
+    scopes: ["Sites.Read.All"]
+  };
+  const NICE = { "CONSTELLATION BEER": "Constellation", "ANHEUSER-BUSCH": "Anheuser-Busch", "HEINEKEN USA": "Heineken USA", "MOLSON COORS": "Molson Coors", "PARISH BREWING": "Parish Brewing", "FLY LLAMA BREWING COMPANY": "Fly Llama Brewing", "CHANDELEUR BREWING": "Chandeleur Brewing", "ABITA BREWING CO": "Abita", "BOSTON BEER CO.": "Boston Beer", "THE YUENGLING CO LLC": "Yuengling", "SOUTHERN PROHIBITION BREWING": "Southern Prohibition", "PABST BREWING CO": "Pabst", "GAMBRINUS CO.": "Gambrinus (Shiner)", "DIAGEO-GUINNESS": "Diageo-Guinness", "SAPPORO USA": "Sapporo USA", "NEW BELGIUM": "New Belgium", "LAGUNITAS": "Lagunitas", "SWEETWATER BREWING": "SweetWater", "LAZY MAGNOLIA": "Lazy Magnolia", "URBAN SOUTH BREWERY": "Urban South", "FOUNDERS": "Founders", "SIERRA NEVADA": "Sierra Nevada", "JOCK BEER LLC": "Jock Beer (Garage Beer)", "FERTILE GROUND": "Fertile Ground", "KEY CITY BREWING": "Key City Brewing", "WISEACRE BREWING": "Wiseacre", "KONA BREWING": "Kona", "ACE CIDER": "Ace Cider", "GNARLY BARLEY BREWING": "Gnarly Barley", "PERFECT PLAIN BREWING": "Perfect Plain", "YELLOWHAMMER BREWING": "Yellowhammer Brewing", "KIRIN": "Kirin" };
+  const FIX = { "ANHEUSER-BUSCH INBEV": "Anheuser-Busch", "MITCHELL DISTRIBUTING": "Distributor (brand not recorded)", "SOUTHERN BEVERAGES": "Distributor (brand not recorded)", "TRULY HARD SELTZER": "Boston Beer", "BELL'S SEASONAL": "Bell's", "BELL'S TWO-HEARTED ALE": "Bell's", "BELL'S SPECIALTY": "Bell's", "NOLA SEASONAL": "NOLA Brewing" };
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = n => n.toLocaleString(), pct = (a, b) => b ? Math.round(100 * a / b) + "%" : "–";
+  const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const titleCase = s => String(s || "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+
+  /* ---------- sign-in ---------- */
+  let msalApp = null, account = null;
+  async function token() {
+    const req = { scopes: CFG.scopes, account };
+    try { return (await msalApp.acquireTokenSilent(req)).accessToken; }
+    catch (e) { await msalApp.acquireTokenRedirect(req); throw new Error("redirecting"); }
+  }
+  async function graph(path) {
+    const t = await token();
+    let url = path.startsWith("https://") ? path : "https://graph.microsoft.com/v1.0" + path, out = [];
+    while (url) {
+      const r = await fetch(url, { headers: { Authorization: "Bearer " + t, Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" } });
+      if (r.status === 401 || r.status === 403) { const e = new Error("noaccess"); e.status = r.status; throw e; }
+      if (!r.ok) throw new Error("Graph " + r.status);
+      const j = await r.json();
+      if (!j.value) return j;
+      out = out.concat(j.value); url = j["@odata.nextLink"] || null;
+    }
+    return out;
+  }
+
+  /* ---------- data ---------- */
+  let VISITS = [], STOPS = {}, BRANDSUP = {};
+  async function loadAll() {
+    status("Loading survey data…");
+    const site = await graph("/sites/" + CFG.site + "?$select=id");
+    const L = id => "/sites/" + site.id + "/lists/" + id + "/items?$top=999&$expand=fields($select=";
+    const [v, s, b] = await Promise.all([
+      graph(L(CFG.lists.visits) + "Title,AccountNumber,AccountName,VisitDate,Location,Market,LineCleanerName,TapList,DataSource)"),
+      graph(L(CFG.lists.stops) + "Title,CustomerName,RouteNum,LineCleaner,Location)"),
+      graph(L(CFG.lists.brands) + "Title,Supplier)")
+    ]);
+    VISITS = v.map(x => x.fields);
+    STOPS = {}; s.forEach(x => { STOPS[x.fields.Title] = x.fields; });
+    BRANDSUP = {}; b.forEach(x => { BRANDSUP[String(x.fields.Title || "").toUpperCase()] = x.fields.Supplier || ""; });
+  }
+  function supOf(brand, given) {
+    const B = String(brand || "").toUpperCase();
+    if (FIX[B]) return FIX[B];
+    const raw = BRANDSUP[B] || given || "";
+    if (!raw) return "Supplier not in brand list";
+    return NICE[raw.toUpperCase()] || titleCase(raw);
+  }
+
+  /* ---------- filters + state ---------- */
+  const today = new Date();
+  const st = { loc: "All", route: "", from: "", to: iso(today), range: "30", src: "all", brand: null, sup: null, excl: false, q: "", sortK: "s", sortD: 1 };
+  function setRange(r) {
+    st.range = r;
+    if (r === "all") { st.from = ""; st.to = iso(today); }
+    else if (r !== "custom") { const d = new Date(); d.setDate(d.getDate() - (+r - 1)); st.from = iso(d); st.to = iso(today); }
+  }
+  setRange("30");
+  const OUR = () => st.loc === "Gulfport" ? "FEB" : st.loc === "Jackson" ? "CCB" : "FEB/CCB";
+
+  // One row per account: its most recent visit in the chosen range. Rows: [acct, name, date, loc, brand, ours, comp, route, cleaner, supplier]
+  function rows() {
+    const latest = {};
+    VISITS.forEach(v => {
+      const d = String(v.VisitDate || "").slice(0, 10); if (!d) return;
+      if (st.from && d < st.from) return; if (st.to && d > st.to) return;
+      if (st.src === "app" && v.DataSource === "Encompass import") return;
+      if (st.src === "import" && v.DataSource !== "Encompass import") return;
+      const a = v.AccountNumber; if (!latest[a] || d > latest[a].d) latest[a] = { d, v };
+    });
+    const R = [];
+    Object.values(latest).forEach(({ d, v }) => {
+      const stop = STOPS[v.AccountNumber] || {};
+      const loc = v.Market || v.Location || stop.Location || "";
+      if (st.loc !== "All" && loc !== st.loc) return;
+      if (st.route && String(stop.RouteNum || "") !== st.route) return;
+      let taps = []; try { taps = JSON.parse(v.TapList || "[]"); } catch (e) {}
+      const by = {};
+      taps.forEach(t => { if (t.status === "Pending") return; const k = String(t.brand || "").toUpperCase(); const x = by[k] || (by[k] = { o: 0, c: 0, s: t.supplier }); t.ours ? x.o++ : x.c++; });
+      Object.entries(by).forEach(([b, x]) => R.push([v.AccountNumber, titleCase(v.AccountName || stop.CustomerName), d, loc, b, x.o, x.c, stop.RouteNum || "", v.LineCleanerName || stop.LineCleaner || "", supOf(b, x.s)]));
+    });
+    return R;
+  }
+
+  /* ---------- render ---------- */
+  function accounts(rs) { const m = {}; rs.forEach(r => { const a = m[r[0]] || (m[r[0]] = { id: r[0], n: r[1], l: r[3], d: r[2], route: r[7], cl: r[8], o: 0, c: 0, taps: [] }); a.o += r[5]; a.c += r[6]; a.taps.push(r); }); return Object.values(m).map(a => (a.t = a.o + a.c, a.s = a.t ? a.o / a.t : 0, a)); }
+  function bars(el, items, max, onClick, selKey) {
+    el.innerHTML = items.map(([k, o, c]) => `<div class="bar ${selKey === k ? "sel" : ""}" data-k="${esc(k)}"><div class="lab" title="${esc(k)}">${esc(k)}</div><div class="track"><div class="o" style="width:${100 * o / max}%"></div><div class="c" style="width:${100 * c / max}%"></div></div><div class="n">${fmt(o + c)}</div></div>`).join("");
+    if (onClick) el.querySelectorAll(".bar").forEach(b => b.onclick = () => onClick(b.dataset.k));
+  }
+  function render() {
+    const rs = rows(); const all = accounts(rs);
+    let acc = all;
+    if (st.brand) acc = acc.filter(a => a.taps.some(r => r[4] === st.brand));
+    if (st.sup) acc = acc.filter(a => a.taps.some(r => r[9] === st.sup));
+    if (st.q) { const Q = st.q.toUpperCase(); acc = acc.filter(a => a.n.toUpperCase().includes(Q) || String(a.id).includes(Q) || a.taps.some(r => r[4].includes(Q))); }
+    const preEx = acc; if (st.excl) acc = acc.filter(a => a.c === 0);
+    const ids = new Set(acc.map(a => a.id)); const fr = rs.filter(r => ids.has(r[0]));
+    const O = fr.reduce((s, r) => s + r[5], 0), C = fr.reduce((s, r) => s + r[6], 0);
+    const withComp = acc.filter(a => a.c > 0).length, exAll = preEx.filter(a => a.c === 0).length;
+    document.querySelectorAll(".our").forEach(e => e.textContent = OUR());
+    const chips = [];
+    if (st.excl) chips.push(["Exclusive accounts", () => { st.excl = false; }]);
+    if (st.sup) chips.push([st.sup, () => { st.sup = null; }]);
+    if (st.brand) chips.push([st.brand, () => { st.brand = null; }]);
+    $("#active").innerHTML = chips.map(([t], i) => `<span class="chip">${esc(t)}<button data-i="${i}" aria-label="Clear ${esc(t)} filter">×</button></span>`).join("");
+    $("#active").querySelectorAll("button").forEach(b => b.onclick = () => { chips[+b.dataset.i][1](); render(); });
+    $("#kpis").innerHTML = [[fmt(acc.length), "Accounts surveyed"], [fmt(O + C), "Taps counted"], [fmt(O), OUR() + " taps"], [fmt(C), "Competitor taps"], [pct(O, O + C), OUR() + " tap share"], [pct(withComp, acc.length), "Accounts with a competitor tap"]].map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join("")
+      + `<button class="kpi ex ${st.excl ? "on" : ""}" id="exbtn" aria-pressed="${st.excl}"><b>${fmt(exAll)} <small>${pct(exAll, preEx.length)}</small></b><span>${OUR()} exclusive accounts · ${st.excl ? "showing only these" : "click to show"}</span></button>`;
+    $("#exbtn").onclick = () => { st.excl = !st.excl; render(); };
+    const L = {}; fr.forEach(r => { const x = L[r[3]] || (L[r[3]] = [r[3] + (r[3] === "Gulfport" ? " (FEB)" : r[3] === "Jackson" ? " (CCB)" : ""), 0, 0]); x[1] += r[5]; x[2] += r[6]; });
+    const li = Object.values(L).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#byloc"), li, Math.max(1, ...li.map(x => x[1] + x[2])));
+    const base = st.excl ? fr : rs, cb = {}, ob = {};
+    base.forEach(r => { if (r[6]) cb[r[4]] = (cb[r[4]] || 0) + r[6]; if (r[5]) ob[r[4]] = (ob[r[4]] || 0) + r[5]; });
+    const pick = k => { st.brand = st.brand === k ? null : k; render(); };
+    const ci = Object.entries(cb).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => [k, 0, v]); bars($("#comp"), ci, Math.max(1, ...ci.map(x => x[2])), pick, st.brand);
+    if (!ci.length) $("#comp").innerHTML = '<p class="muted">No competitor taps in these accounts.</p>';
+    const oi = Object.entries(ob).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => [k, v, 0]); bars($("#ours"), oi, Math.max(1, ...oi.map(x => x[1])), pick, st.brand);
+    const SP = {}; (st.excl || st.brand || st.q ? fr : rs).forEach(r => { const x = SP[r[9]] || (SP[r[9]] = [r[9], 0, 0]); x[1] += r[5]; x[2] += r[6]; });
+    const si = Object.values(SP).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#sup"), si, Math.max(1, ...si.map(x => x[1] + x[2])), k => { st.sup = st.sup === k ? null : k; render(); }, st.sup);
+    acc.sort((a, b) => { const x = a[st.sortK], y = b[st.sortK]; return (typeof x === "string" ? String(x).localeCompare(String(y)) : x - y) * st.sortD; });
+    $("#rows").innerHTML = acc.map(a => `<tr data-id="${esc(a.id)}"><td>${esc(a.n)} <span class="muted">#${esc(a.id)}</span></td><td>${esc(a.l)}</td><td>${esc(a.route)}</td><td class="num">${a.t}</td><td class="num">${a.o}</td><td class="num">${a.c}</td><td class="num">${pct(a.o, a.t)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">No surveyed accounts match these filters.</td></tr>`;
+    $("#detail").innerHTML = "";
+    document.querySelectorAll("#rows tr[data-id]").forEach(tr => tr.onclick = () => {
+      const a = acc.find(x => String(x.id) === tr.dataset.id);
+      $("#detail").innerHTML = `<h2 style="margin-top:14px">${esc(a.n)} · ${esc(a.l)}${a.route ? " · Route " + esc(a.route) : ""} · surveyed ${esc(a.d)}${a.cl ? " by " + esc(a.cl) : ""}</h2>` + a.taps.map(r => `${r[5] ? `<span class="pill o">${esc(r[4])}${r[5] > 1 ? " ×" + r[5] : ""}</span>` : ""}${r[6] ? `<span class="pill c">${esc(r[4])}${r[6] > 1 ? " ×" + r[6] : ""}</span>` : ""}`).join("");
+    });
+    const srcCount = new Set(VISITS.map(v => v.DataSource === "Encompass import" ? "import" : "app"));
+    $("#subtitle").textContent = (st.from ? st.from + " to " + st.to : "All dates through " + st.to) + " · latest visit per account" + (srcCount.has("import") && st.src !== "app" ? " · includes Encompass import" : "");
+  }
+  function fillRoutes() {
+    const rs = [...new Set(Object.values(STOPS).map(s => String(s.RouteNum || "")).filter(Boolean))].sort();
+    const names = {}; Object.values(STOPS).forEach(s => { if (s.RouteNum && s.LineCleaner) names[s.RouteNum] = s.LineCleaner; });
+    $("#route").innerHTML = `<option value="">All routes</option>` + rs.map(r => `<option value="${esc(r)}">${esc(r)}${names[r] ? " · " + esc(names[r]) : ""}</option>`).join("");
+  }
+  function wire() {
+    document.querySelectorAll("#loc button").forEach(b => b.onclick = () => { st.loc = b.dataset.v; document.querySelectorAll("#loc button").forEach(x => x.setAttribute("aria-pressed", x === b)); render(); });
+    $("#route").onchange = e => { st.route = e.target.value; render(); };
+    $("#range").onchange = e => { setRange(e.target.value); $("#custom").hidden = e.target.value !== "custom"; $("#from").value = st.from; $("#to").value = st.to; render(); };
+    $("#from").onchange = e => { st.from = e.target.value; render(); };
+    $("#to").onchange = e => { st.to = e.target.value || iso(today); render(); };
+    $("#src").onchange = e => { st.src = e.target.value; render(); };
+    $("#q").oninput = e => { st.q = e.target.value.trim(); render(); };
+    document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; st.sortD = st.sortK === k ? -st.sortD : (k === "s" ? 1 : -1); st.sortK = k; render(); });
+    $("#refresh").onclick = async () => { await start(true); };
+    $("#signout").onclick = () => msalApp.logoutRedirect({ account });
+  }
+  function status(msg, isErr) { $("#status").hidden = !msg; $("#status").className = "status" + (isErr ? " err" : ""); $("#status").innerHTML = msg || ""; }
+
+  async function start(reload) {
+    try {
+      await loadAll(); fillRoutes(); if (!reload) wire();
+      $("#main").hidden = false; status(""); render();
+      $("#who").textContent = account ? account.name || account.username : "";
+    } catch (e) {
+      if (e.message === "redirecting") return;
+      if (e.message === "noaccess") return status("You're signed in, but you don't have access to the Draft Survey data. Ask Matthew Hessell to add you.", true);
+      status("Couldn't load the data (" + esc(e.message) + "). Try Refresh in a minute.", true);
+    }
+  }
+
+  async function boot() {
+    if (window.__DEMO) { account = { name: "Demo" }; VISITS = window.__DEMO.visits; STOPS = window.__DEMO.stops; BRANDSUP = window.__DEMO.brands; fillRoutes(); wire(); $("#signin").hidden = true; $("#main").hidden = false; render(); return; }
+    if (!window.msal) return status("The Microsoft sign-in library didn't load. Check your connection and reload.", true);
+    msalApp = new msal.PublicClientApplication({ auth: { clientId: CFG.clientId, authority: "https://login.microsoftonline.com/" + CFG.tenantId, redirectUri: location.origin + "/" }, cache: { cacheLocation: "localStorage" } });
+    const res = await msalApp.handleRedirectPromise().catch(e => { status("Sign-in didn't finish: " + esc(e.errorMessage || e.message), true); return null; });
+    account = (res && res.account) || msalApp.getAllAccounts()[0] || null;
+    if (!account) { $("#signin").hidden = false; $("#signbtn").onclick = () => msalApp.loginRedirect({ scopes: CFG.scopes }); return; }
+    msalApp.setActiveAccount(account); $("#signin").hidden = true;
+    start(false);
+  }
+  boot();
+})();

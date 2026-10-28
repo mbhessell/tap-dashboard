@@ -5,7 +5,7 @@
     clientId: "77d8f819-d373-40ee-a424-da8a8b15552d",
     tenantId: "0c07cc35-4442-46a2-a2b1-a250d653b92f",
     site: "febdistributing365.sharepoint.com:/sites/DraftSurvey",
-    lists: { visits: "cd3d31a7-ae92-4d2f-bb94-ca0693882ebc", stops: "4696936e-1e85-49ae-b5c7-50fc01f1237d", brands: "fd9848ac-b296-440b-ae80-0e28f10ab755" },
+    lists: { visits: "cd3d31a7-ae92-4d2f-bb94-ca0693882ebc", stops: "4696936e-1e85-49ae-b5c7-50fc01f1237d", brands: "fd9848ac-b296-440b-ae80-0e28f10ab755", cleaning: "3dc80bc5-6a2e-45c3-b4e7-6ae6ed159aa0" },
     scopes: ["Sites.Read.All"]
   };
   const NICE = { "CONSTELLATION BEER": "Constellation", "ANHEUSER-BUSCH": "Anheuser-Busch", "HEINEKEN USA": "Heineken USA", "MOLSON COORS": "Molson Coors", "PARISH BREWING": "Parish Brewing", "FLY LLAMA BREWING COMPANY": "Fly Llama Brewing", "CHANDELEUR BREWING": "Chandeleur Brewing", "ABITA BREWING CO": "Abita", "BOSTON BEER CO.": "Boston Beer", "THE YUENGLING CO LLC": "Yuengling", "SOUTHERN PROHIBITION BREWING": "Southern Prohibition", "PABST BREWING CO": "Pabst", "GAMBRINUS CO.": "Gambrinus (Shiner)", "DIAGEO-GUINNESS": "Diageo-Guinness", "SAPPORO USA": "Sapporo USA", "NEW BELGIUM": "New Belgium", "LAGUNITAS": "Lagunitas", "SWEETWATER BREWING": "SweetWater", "LAZY MAGNOLIA": "Lazy Magnolia", "URBAN SOUTH BREWERY": "Urban South", "FOUNDERS": "Founders", "SIERRA NEVADA": "Sierra Nevada", "JOCK BEER LLC": "Jock Beer (Garage Beer)", "FERTILE GROUND": "Fertile Ground", "KEY CITY BREWING": "Key City Brewing", "WISEACRE BREWING": "Wiseacre", "KONA BREWING": "Kona", "ACE CIDER": "Ace Cider", "GNARLY BARLEY BREWING": "Gnarly Barley", "PERFECT PLAIN BREWING": "Perfect Plain", "YELLOWHAMMER BREWING": "Yellowhammer Brewing", "KIRIN": "Kirin" };
@@ -38,17 +38,18 @@
   }
 
   /* ---------- data ---------- */
-  let VISITS = [], STOPS = {}, BRANDSUP = {};
+  let VISITS = [], STOPS = {}, BRANDSUP = {}, CLEAN = [];
   async function loadAll() {
     status("Loading survey data…");
     const site = await graph("/sites/" + CFG.site + "?$select=id");
     const L = id => "/sites/" + site.id + "/lists/" + id + "/items?$top=999&$expand=fields($select=";
-    const [v, s, b] = await Promise.all([
+    const [v, s, b, cl] = await Promise.all([
       graph(L(CFG.lists.visits) + "Title,AccountNumber,AccountName,VisitDate,Location,Market,LineCleanerName,TapList,DataSource)"),
-      graph(L(CFG.lists.stops) + "Title,CustomerName,RouteNum,LineCleaner,Location)"),
-      graph(L(CFG.lists.brands) + "Title,Supplier)")
+      graph(L(CFG.lists.stops) + "Title,CustomerName,RouteNum,LineCleaner,Location,Phase,DayOfWeek)"),
+      graph(L(CFG.lists.brands) + "Title,Supplier)"),
+      graph(L(CFG.lists.cleaning) + "Title,AccountNumber,AccountName,VisitDate,Market,Location,LineCleanerName,CleanQ1,CleanQ2,SignatureStatus,DataSource)")
     ]);
-    VISITS = v.map(x => x.fields);
+    VISITS = v.map(x => x.fields); CLEAN = cl.map(x => x.fields);
     STOPS = {}; s.forEach(x => { STOPS[x.fields.Title] = x.fields; });
     BRANDSUP = {}; b.forEach(x => { BRANDSUP[String(x.fields.Title || "").toUpperCase()] = x.fields.Supplier || ""; });
   }
@@ -139,8 +140,46 @@
       $("#detail").innerHTML = `<h2 style="margin-top:14px">${esc(a.n)} · ${esc(a.l)}${a.route ? " · Route " + esc(a.route) : ""} · surveyed ${esc(a.d)}${a.cl ? " by " + esc(a.cl) : ""}</h2>` + a.taps.map(r => `${r[5] ? `<span class="pill o">${esc(r[4])}${r[5] > 1 ? " ×" + r[5] : ""}</span>` : ""}${r[6] ? `<span class="pill c">${esc(r[4])}${r[6] > 1 ? " ×" + r[6] : ""}</span>` : ""}`).join("");
     });
     const srcCount = new Set(VISITS.map(v => v.DataSource === "Encompass import" ? "import" : "app"));
+    renderCleaning();
     $("#subtitle").textContent = (st.from ? st.from + " to " + st.to : "All dates through " + st.to) + " · latest visit per account" + (srcCount.has("import") && st.src !== "app" ? " · includes Encompass import" : "");
   }
+  /* ---------- line cleaning ---------- */
+  const EVERY = ph => { const p = String(ph || ""); return /all/i.test(p) ? 7 : /&/.test(p) ? 14 : 28; };
+  const daysBetween = (a, b) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
+  function renderCleaning() {
+    const okStop = s => (st.loc === "All" || s.Location === st.loc) && (!st.route || String(s.RouteNum || "") === st.route);
+    const inScope = c => { const s = STOPS[c.AccountNumber] || {}; const loc = c.Market || c.Location || s.Location || "";
+      if (st.loc !== "All" && loc !== st.loc) return false; if (st.route && String(s.RouteNum || "") !== st.route) return false;
+      if (st.src === "app" && c.DataSource === "Encompass import") return false; if (st.src === "import" && c.DataSource !== "Encompass import") return false; return true; };
+    const all = CLEAN.filter(inScope);
+    const inRange = all.filter(c => { const d = String(c.VisitDate || "").slice(0, 10); return d && (!st.from || d >= st.from) && (!st.to || d <= st.to); });
+    const n = inRange.length, acid = inRange.filter(c => /acid/i.test(c.CleanQ1 || "")).length, pump = inRange.filter(c => /yes/i.test(c.CleanQ2 || "")).length;
+    const answered = q => inRange.filter(c => String(c[q] || "").trim()).length;
+    const appRows = inRange.filter(c => c.DataSource !== "Encompass import"), signed = appRows.filter(c => c.SignatureStatus === "Signed").length;
+    const accts = new Set(inRange.map(c => c.AccountNumber)).size;
+    $("#ckpis").innerHTML = [[fmt(n), "Cleanings"], [fmt(accts), "Accounts cleaned"], [pct(acid, answered("CleanQ1")), "Acid cleanings"], [pct(pump, answered("CleanQ2")), "Pump used"], [appRows.length ? pct(signed, appRows.length) : "–", "Manager signed (app visits)"]].map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join("");
+    const by = {}; inRange.forEach(c => { const k = c.LineCleanerName || "Unknown"; const x = by[k] || (by[k] = [k, 0, 0]); /acid/i.test(c.CleanQ1 || "") ? x[2]++ : x[1]++; });
+    const bi = Object.values(by).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#bycleaner"), bi, Math.max(1, ...bi.map(x => x[1] + x[2])));
+    // Overdue: scheduled stops whose last cleaning (any date) is older than their rotation allows.
+    const last = {}; all.forEach(c => { const d = String(c.VisitDate || "").slice(0, 10); if (d && (!last[c.AccountNumber] || d > last[c.AccountNumber])) last[c.AccountNumber] = d; });
+    const t = iso(today), grace = 3;
+    const od = Object.values(STOPS).filter(okStop).map(s => { const l = last[s.Title]; const due = EVERY(s.Phase); const ago = l ? daysBetween(l, t) : null; return { s, l, due, ago, late: ago == null ? Infinity : ago - due }; })
+      .filter(x => x.ago == null || x.ago > x.due + grace).sort((a, b) => b.late - a.late);
+    const firstClean = CLEAN.reduce((m, c) => { const d = String(c.VisitDate || "").slice(0, 10); return d && (!m || d < m) ? d : m; }, "");
+    $("#odcount").textContent = fmt(od.length);
+    $("#overdue").innerHTML = od.slice(0, 300).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${x.due} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Nothing overdue.</td></tr>`;
+    // Not visited (no tap survey or cleaning) in the last 14 days.
+    const lastAny = {}; const bump = (k, d) => { if (d && (!lastAny[k] || d > lastAny[k])) lastAny[k] = d; };
+    VISITS.forEach(v => bump(v.AccountNumber, String(v.VisitDate || "").slice(0, 10))); CLEAN.forEach(c => bump(c.AccountNumber, String(c.VisitDate || "").slice(0, 10)));
+    const hideMonthly = $("#nvmonthly").checked;
+    const nv = Object.values(STOPS).filter(okStop).filter(s => !(hideMonthly && EVERY(s.Phase) === 28)).map(s => ({ s, l: lastAny[s.Title] || null, ago: lastAny[s.Title] ? daysBetween(lastAny[s.Title], t) : null }))
+      .filter(x => x.ago == null || x.ago > 14).sort((a, b) => (b.ago == null ? 1e9 : b.ago) - (a.ago == null ? 1e9 : a.ago));
+    const sched = Object.values(STOPS).filter(okStop).filter(s => !(hideMonthly && EVERY(s.Phase) === 28)).length;
+    $("#nvcount").textContent = fmt(nv.length) + " of " + fmt(sched);
+    $("#notvisited").innerHTML = nv.slice(0, 500).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}${x.s.LineCleaner ? " · " + esc(x.s.LineCleaner) : ""}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${EVERY(x.s.Phase)} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Every scheduled account has been visited in the last 14 days.</td></tr>`;
+    $("#odnote").textContent = firstClean ? `Cleaning records start ${firstClean}, so "No record" can also mean the account simply hasn't been cleaned since then.` : "";
+  }
+
   function fillRoutes() {
     const rs = [...new Set(Object.values(STOPS).map(s => String(s.RouteNum || "")).filter(Boolean))].sort();
     const names = {}; Object.values(STOPS).forEach(s => { if (s.RouteNum && s.LineCleaner) names[s.RouteNum] = s.LineCleaner; });
@@ -156,6 +195,7 @@
     $("#q").oninput = e => { st.q = e.target.value.trim(); render(); };
     document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; st.sortD = st.sortK === k ? -st.sortD : (k === "s" ? 1 : -1); st.sortK = k; render(); });
     $("#refresh").onclick = async () => { await start(true); };
+    $("#nvmonthly").onchange = () => render();
     $("#signout").onclick = () => msalApp.logoutRedirect({ account });
   }
   function status(msg, isErr) { $("#status").hidden = !msg; $("#status").className = "status" + (isErr ? " err" : ""); $("#status").innerHTML = msg || ""; }
@@ -173,7 +213,7 @@
   }
 
   async function boot() {
-    if (window.__DEMO) { account = { name: "Demo" }; VISITS = window.__DEMO.visits; STOPS = window.__DEMO.stops; BRANDSUP = window.__DEMO.brands; fillRoutes(); wire(); $("#signin").hidden = true; $("#main").hidden = false; render(); return; }
+    if (window.__DEMO) { account = { name: "Demo" }; VISITS = window.__DEMO.visits; STOPS = window.__DEMO.stops; BRANDSUP = window.__DEMO.brands; CLEAN = window.__DEMO.clean || []; fillRoutes(); wire(); $("#signin").hidden = true; $("#main").hidden = false; render(); return; }
     if (!window.msal) return status("The Microsoft sign-in library didn't load. Check your connection and reload.", true);
     msalApp = new msal.PublicClientApplication({ auth: { clientId: CFG.clientId, authority: "https://login.microsoftonline.com/" + CFG.tenantId, redirectUri: location.origin + "/" }, cache: { cacheLocation: "localStorage" } });
     const res = await msalApp.handleRedirectPromise().catch(e => { status("Sign-in didn't finish: " + esc(e.errorMessage || e.message), true); return null; });

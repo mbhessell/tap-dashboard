@@ -141,6 +141,7 @@
     });
     const srcCount = new Set(VISITS.map(v => v.DataSource === "Encompass import" ? "import" : "app"));
     renderCleaning();
+    renderChanges();
     renderSchedule();
     $("#subtitle").textContent = (st.from ? st.from + " to " + st.to : "All dates through " + st.to) + " · latest visit per account" + (srcCount.has("import") && st.src !== "app" ? " · includes Encompass import" : "");
   }
@@ -181,6 +182,47 @@
     $("#nvcount").textContent = fmt(nv.length) + " of " + fmt(sched);
     $("#notvisited").innerHTML = nv.slice(0, 500).map(x => `<tr><td>${esc(titleCase(x.s.CustomerName))} <span class="muted">#${esc(x.s.Title)}</span></td><td>${esc(x.s.Location || "")}</td><td>${esc(x.s.RouteNum || "")}${x.s.LineCleaner ? " · " + esc(x.s.LineCleaner) : ""}</td><td>${esc(x.s.DayOfWeek || "")}</td><td>every ${EVERY(x.s.Phase)} days</td><td class="num">${x.l ? esc(x.l) : "No record"}</td><td class="num">${x.ago == null ? "–" : x.ago}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Every scheduled account has been visited in the last 14 days.</td></tr>`;
     $("#nvnote").textContent = firstClean ? `Cleaning records start ${firstClean}, so "No record" can also mean the account simply hasn't been cleaned since then.` : "";
+  }
+
+  /* ---------- tap changes: each visit vs the previous visit at the same account ---------- */
+  let chBrand = null;
+  function tapCounts(v) { let t = []; try { t = JSON.parse(v.TapList || "[]"); } catch (e) {} const m = {}; t.forEach(x => { if (x.status === "Pending") return; const k = String(x.brand || "").toUpperCase(); if (!k) return; const y = m[k] || (m[k] = { n: 0, ours: !!x.ours }); y.n++; }); return m; }
+  function renderChanges() {
+    const byAcct = {};
+    VISITS.forEach(v => { if (st.src === "app" && v.DataSource === "Encompass import") return; if (st.src === "import" && v.DataSource !== "Encompass import") return;
+      const d = String(v.VisitDate || "").slice(0, 10); if (d) (byAcct[v.AccountNumber] = byAcct[v.AccountNumber] || []).push({ d, v }); });
+    const changes = [];
+    Object.entries(byAcct).forEach(([acct, list]) => {
+      const s = STOPS[acct] || {}; list.sort((x, y) => x.d < y.d ? -1 : 1);
+      for (let i = 1; i < list.length; i++) {
+        const cur = list[i], prev = list[i - 1]; if (st.from && cur.d < st.from) continue; if (st.to && cur.d > st.to) continue;
+        const loc = cur.v.Market || cur.v.Location || s.Location || "";
+        if (st.loc !== "All" && loc !== st.loc) continue; if (st.route && String(s.RouteNum || "") !== st.route) continue;
+        const A = tapCounts(prev.v), B = tapCounts(cur.v), added = [], removed = [];
+        new Set([...Object.keys(A), ...Object.keys(B)]).forEach(k => { const a = A[k] ? A[k].n : 0, b = B[k] ? B[k].n : 0; const ours = (B[k] || A[k]).ours;
+          if (b > a) added.push({ k, n: b - a, ours }); if (a > b) removed.push({ k, n: a - b, ours }); });
+        if (added.length || removed.length) changes.push({ acct, name: titleCase(cur.v.AccountName || s.CustomerName), loc, route: s.RouteNum || "", d: cur.d, prevD: prev.d, added, removed });
+      }
+    });
+    const sum = (arr, f) => arr.reduce((t, c) => t + f(c), 0), cnt = (l, o) => l.filter(x => x.ours === o).reduce((t, x) => t + x.n, 0);
+    const oA = sum(changes, c => cnt(c.added, true)), oR = sum(changes, c => cnt(c.removed, true)), cA = sum(changes, c => cnt(c.added, false)), cR = sum(changes, c => cnt(c.removed, false));
+    const swing = n => (n > 0 ? "+" : "") + fmt(n);
+    $("#chkpis").innerHTML = [[fmt(changes.length), "Accounts with tap changes"], [fmt(oA), OUR() + " taps added"], [fmt(oR), OUR() + " taps removed"], [swing(oA - oR), "Net " + OUR() + " taps"], [fmt(cA), "Competitor taps added"], [fmt(cR), "Competitor taps removed"], [swing(cA - cR), "Net competitor taps"]]
+      .map(([b, s], i) => `<div class="kpi ${i === 3 ? (oA - oR >= 0 ? "up" : "down") : i === 6 ? (cA - cR > 0 ? "down" : "up") : ""}"><b>${b}</b><span>${s}</span></div>`).join("");
+    const B = {}; changes.forEach(c => { c.added.forEach(x => { const y = B[x.k] || (B[x.k] = { k: x.k, ours: x.ours, a: 0, r: 0 }); y.a += x.n; }); c.removed.forEach(x => { const y = B[x.k] || (B[x.k] = { k: x.k, ours: x.ours, a: 0, r: 0 }); y.r += x.n; }); });
+    const bl = Object.values(B).sort((x, y) => Math.abs(y.a - y.r) - Math.abs(x.a - x.r) || (y.a + y.r) - (x.a + x.r));
+    $("#chbrands").innerHTML = bl.length ? bl.slice(0, 40).map(b => `<tr data-k="${esc(b.k)}" class="${chBrand === b.k ? "selrow" : ""}"><td>${esc(b.k)}</td><td>${b.ours ? `<span class="pill o">${OUR()}</span>` : '<span class="pill c">Competitor</span>'}</td><td class="num">${b.a}</td><td class="num">${b.r}</td><td class="num"><b class="${b.a - b.r > 0 ? (b.ours ? "gain" : "loss") : b.a - b.r < 0 ? (b.ours ? "loss" : "gain") : ""}">${swing(b.a - b.r)}</b></td></tr>`).join("") : "";
+    $("#chbrands").querySelectorAll("tr").forEach(tr => tr.onclick = () => { chBrand = chBrand === tr.dataset.k ? null : tr.dataset.k; renderChanges(); });
+    let list = chBrand ? changes.filter(c => c.added.some(x => x.k === chBrand) || c.removed.some(x => x.k === chBrand)) : changes;
+    list = list.sort((x, y) => x.d < y.d ? 1 : -1);
+    const pills = (l, cls) => l.map(x => `<span class="pill ${x.ours ? "o" : "c"}">${cls}${esc(x.k)}${x.n > 1 ? " ×" + x.n : ""}</span>`).join("");
+    $("#chlist").innerHTML = list.slice(0, 300).map(c => `<tr><td class="num">${esc(c.d)}</td><td>${esc(c.name)} <span class="muted">#${esc(c.acct)}</span></td><td>${esc(c.loc)}${c.route ? " · " + esc(c.route) : ""}</td><td>${pills(c.added, "+ ")}</td><td>${pills(c.removed, "− ")}</td><td class="num muted">${esc(c.prevD)}</td></tr>`).join("");
+    $("#chfilter").innerHTML = chBrand ? `<span class="chip">${esc(chBrand)}<button aria-label="Clear brand">×</button></span>` : "";
+    if (chBrand) $("#chfilter button").onclick = () => { chBrand = null; renderChanges(); };
+    const multi = Object.values(byAcct).filter(l => l.length > 1).length;
+    $("#chempty").hidden = changes.length > 0;
+    $("#chempty").textContent = multi ? "No tap changes between visits in this date range." : "No changes to show yet. Changes appear once an account has been surveyed at least twice — the Encompass import has one survey per account, so this fills in as app visits come in.";
+    $("#chbody").hidden = changes.length === 0;
   }
 
   /* ---------- this week's stops for one route ---------- */

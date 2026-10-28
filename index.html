@@ -27,6 +27,7 @@ input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);bo
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
 th{cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 tbody tr{cursor:pointer}tbody tr:hover{background:var(--soft)}
+.kpi.up b{color:var(--ours)}.kpi.down b{color:var(--comp)}.gain{color:var(--ours)}.loss{color:var(--comp)}tr.selrow{background:var(--soft)}
 .dayhead{font-size:15px;font-weight:700;margin:16px 0 6px;cursor:pointer}
 .card.alert{border:2px solid var(--comp)}.card.alert h2{color:var(--comp)}
 #sup{max-height:300px;overflow:auto;padding-right:4px}
@@ -64,6 +65,13 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <div class="card"><h2>Top <span class="our"></span> brands <span class="muted" style="font-weight:400">· click to filter</span></h2><div id="ours"></div></div>
 <div class="card"><h2>Taps by supplier <span class="muted" style="font-weight:400">· click to filter</span></h2><div class="legend"><span><i style="background:var(--ours)"></i><span class="our"></span></span><span><i style="background:var(--comp)"></i>Competitor</span></div><div id="sup"></div></div>
 </div>
+<div class="card" style="margin-top:14px"><h2>Tap changes <span class="muted" style="font-weight:400">· each survey compared with the previous survey at the same account</span> <span id="chfilter"></span></h2>
+<div class="kpis" id="chkpis" style="margin-top:8px"></div>
+<p class="muted" id="chempty" hidden></p>
+<div id="chbody" class="grid" style="grid-template-columns:minmax(300px,1fr) minmax(420px,2fr)">
+<div><h2 style="font-size:14px">By brand <span class="muted" style="font-weight:400">· click to see the accounts</span></h2><div class="tablewrap"><table><thead><tr><th>Brand</th><th></th><th class="num">Added</th><th class="num">Removed</th><th class="num">Net</th></tr></thead><tbody id="chbrands"></tbody></table></div></div>
+<div><h2 style="font-size:14px">Account changes <span class="muted" style="font-weight:400">· newest first</span></h2><div class="tablewrap"><table><thead><tr><th class="num">Surveyed</th><th>Account</th><th>Location · route</th><th>Added</th><th>Removed</th><th class="num">Previous survey</th></tr></thead><tbody id="chlist"></tbody></table></div></div>
+</div></div>
 <div class="card" style="margin-top:14px"><h2>Accounts <span class="muted" style="font-weight:400">· lowest share first · click a column to sort, a row to see its taps</span></h2>
 <div class="tablewrap"><table><thead><tr><th data-k="n">Account</th><th data-k="l">Location</th><th data-k="route">Route</th><th class="num" data-k="t">Taps</th><th class="num" data-k="o"><span class="our"></span></th><th class="num" data-k="c">Competitor</th><th class="num" data-k="s">Share</th></tr></thead><tbody id="rows"></tbody></table></div>
 <div id="detail"></div></div>
@@ -82,5 +90,5 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <p class="note">Each account counts once: its most recent survey in the date range. Exclusive = every tap at the account is ours. Our brands show as FEB in Gulfport and CCB in Jackson; Stella Artois counts as a competitor in Jackson. Brands typed in as "not listed" are left out until the office resolves them.</p>
 </div></div>
 <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body></html>

@@ -11,6 +11,7 @@ h1{font-size:24px;margin:0}h2{font-size:15px;margin:0 0 10px}.muted{color:var(--
 .seg button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;cursor:pointer}
 .seg button:first-child{border-radius:8px 0 0 8px}.seg button:last-child{border-radius:0 8px 8px 0}
 .seg button[aria-pressed=true]{background:var(--ours);color:var(--card);border-color:var(--ours)}
+.asearch{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 10px}.asearch input{flex:1;max-width:420px}
 input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-width:200px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
@@ -73,6 +74,7 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <div><h2 style="font-size:14px">Account changes <span class="muted" style="font-weight:400">· newest first</span></h2><div class="tablewrap"><table><thead><tr><th class="num">Surveyed</th><th>Account</th><th>Location · route</th><th>Added</th><th>Removed</th><th class="num">Previous survey</th></tr></thead><tbody id="chlist"></tbody></table></div></div>
 </div></div>
 <div class="card" style="margin-top:14px"><h2>Accounts <span class="muted" style="font-weight:400">· lowest share first · click a column to sort, a row to see its taps</span></h2>
+<div class="asearch"><input type="search" id="aq" placeholder="Search accounts by name, number or route" aria-label="Search accounts"><span class="muted" id="acount"></span></div>
 <div class="tablewrap"><table><thead><tr><th data-k="n">Account</th><th data-k="l">Location</th><th data-k="route">Route</th><th class="num" data-k="t">Taps</th><th class="num" data-k="o"><span class="our"></span></th><th class="num" data-k="c">Competitor</th><th class="num" data-k="s">Share</th></tr></thead><tbody id="rows"></tbody></table></div>
 <div id="detail"></div></div>
 <div class="card alert" style="margin-top:20px"><h2>Not visited in the last 14 days <span class="muted" style="font-weight:400">· <span id="nvcount"></span> scheduled accounts · no tap survey or cleaning on record in 14 days</span></h2>
@@ -90,5 +92,5 @@ select,input[type=date]{font:inherit;padding:6px 10px;border:1px solid var(--lin
 <p class="note">Each account counts once: its most recent survey in the date range. Exclusive = every tap at the account is ours. Our brands show as FEB in Gulfport and CCB in Jackson; Stella Artois counts as a competitor in Jackson. Brands typed in as "not listed" are left out until the office resolves them.</p>
 </div></div>
 <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body></html>

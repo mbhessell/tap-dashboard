@@ -102,6 +102,18 @@
     el.innerHTML = items.map(([k, o, c]) => `<div class="bar ${selKey === k ? "sel" : ""}" data-k="${esc(k)}"><div class="lab" title="${esc(k)}">${esc(k)}</div><div class="track"><div class="o" style="width:${100 * o / max}%"></div><div class="c" style="width:${100 * c / max}%"></div></div><div class="n">${fmt(o + c)}</div></div>`).join("");
     if (onClick) el.querySelectorAll(".bar").forEach(b => b.onclick = () => onClick(b.dataset.k));
   }
+  let lastAcc = [];
+  function drawAccounts() {
+    const Q = ($("#aq").value || "").trim().toUpperCase();
+    const acc = Q ? lastAcc.filter(a => a.n.toUpperCase().includes(Q) || String(a.id).includes(Q) || String(a.route).includes(Q) || String(a.cl || "").toUpperCase().includes(Q)) : lastAcc;
+    $("#acount").textContent = Q ? `${fmt(acc.length)} of ${fmt(lastAcc.length)} accounts` : `${fmt(lastAcc.length)} accounts`;
+    $("#rows").innerHTML = acc.map(a => `<tr data-id="${esc(a.id)}"><td>${esc(a.n)} <span class="muted">#${esc(a.id)}</span></td><td>${esc(a.l)}</td><td>${esc(a.route)}</td><td class="num">${a.t}</td><td class="num">${a.o}</td><td class="num">${a.c}</td><td class="num">${pct(a.o, a.t)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${Q ? "No accounts match that search." : "No surveyed accounts match these filters."}</td></tr>`;
+    $("#detail").innerHTML = "";
+    document.querySelectorAll("#rows tr[data-id]").forEach(tr => tr.onclick = () => {
+      const a = acc.find(x => String(x.id) === tr.dataset.id);
+      $("#detail").innerHTML = `<h2 style="margin-top:14px">${esc(a.n)} · ${esc(a.l)}${a.route ? " · Route " + esc(a.route) : ""} · surveyed ${esc(a.d)}${a.cl ? " by " + esc(a.cl) : ""}</h2>` + a.taps.map(r => `${r[5] ? `<span class="pill o">${esc(r[4])}${r[5] > 1 ? " ×" + r[5] : ""}</span>` : ""}${r[6] ? `<span class="pill c">${esc(r[4])}${r[6] > 1 ? " ×" + r[6] : ""}</span>` : ""}`).join("");
+    });
+  }
   function render() {
     const rs = rows(); const all = accounts(rs);
     let acc = all;
@@ -133,12 +145,7 @@
     const SP = {}; (st.excl || st.brand || st.q ? fr : rs).forEach(r => { const x = SP[r[9]] || (SP[r[9]] = [r[9], 0, 0]); x[1] += r[5]; x[2] += r[6]; });
     const si = Object.values(SP).sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])); bars($("#sup"), si, Math.max(1, ...si.map(x => x[1] + x[2])), k => { st.sup = st.sup === k ? null : k; render(); }, st.sup);
     acc.sort((a, b) => { const x = a[st.sortK], y = b[st.sortK]; return (typeof x === "string" ? String(x).localeCompare(String(y)) : x - y) * st.sortD; });
-    $("#rows").innerHTML = acc.map(a => `<tr data-id="${esc(a.id)}"><td>${esc(a.n)} <span class="muted">#${esc(a.id)}</span></td><td>${esc(a.l)}</td><td>${esc(a.route)}</td><td class="num">${a.t}</td><td class="num">${a.o}</td><td class="num">${a.c}</td><td class="num">${pct(a.o, a.t)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">No surveyed accounts match these filters.</td></tr>`;
-    $("#detail").innerHTML = "";
-    document.querySelectorAll("#rows tr[data-id]").forEach(tr => tr.onclick = () => {
-      const a = acc.find(x => String(x.id) === tr.dataset.id);
-      $("#detail").innerHTML = `<h2 style="margin-top:14px">${esc(a.n)} · ${esc(a.l)}${a.route ? " · Route " + esc(a.route) : ""} · surveyed ${esc(a.d)}${a.cl ? " by " + esc(a.cl) : ""}</h2>` + a.taps.map(r => `${r[5] ? `<span class="pill o">${esc(r[4])}${r[5] > 1 ? " ×" + r[5] : ""}</span>` : ""}${r[6] ? `<span class="pill c">${esc(r[4])}${r[6] > 1 ? " ×" + r[6] : ""}</span>` : ""}`).join("");
-    });
+    lastAcc = acc; drawAccounts();
     const srcCount = new Set(VISITS.map(v => v.DataSource === "Encompass import" ? "import" : "app"));
     renderCleaning();
     renderChanges();
@@ -269,6 +276,7 @@
     $("#to").onchange = e => { st.to = e.target.value || iso(today); render(); };
     $("#src").onchange = e => { st.src = e.target.value; render(); };
     $("#q").oninput = e => { st.q = e.target.value.trim(); render(); };
+    $("#aq").oninput = drawAccounts;
     document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; st.sortD = st.sortK === k ? -st.sortD : (k === "s" ? 1 : -1); st.sortK = k; render(); });
     $("#refresh").onclick = async () => { await start(true); };
     $("#nvmonthly").onchange = () => render();
